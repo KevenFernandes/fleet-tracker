@@ -1,0 +1,74 @@
+generator client { 
+  provider = "prisma-client-js" 
+}
+
+datasource db { 
+  provider = "postgresql"
+  url = env("DATABASE_URL") 
+}
+
+model Vehicle {
+  id        String   @id @default(uuid())
+  imei      String   @unique
+  plate     String?
+  brand     String
+  model     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  positions Position[]
+  events    Event[]
+  state     VehicleState?
+}
+
+model Position {
+  id         String   @id @default(uuid())
+  eventId    String   @unique                       // ← idempotência
+  vehicleId  String
+  vehicle    Vehicle  @relation(fields: [vehicleId], references: [id])
+  latitude   Float
+  longitude  Float
+  speed      Float
+  heading    Float
+  altitude   Float
+  ignition   Boolean
+  odometer   Float    @default(0)
+  capturedAt DateTime
+  receivedAt DateTime @default(now())
+
+  @@index([vehicleId, capturedAt(sort: Desc)])
+  @@map("positions")
+}
+
+model VehicleState {
+  vehicleId     String   @id
+  vehicle       Vehicle  @relation(fields: [vehicleId], references: [id])
+  lastLat       Float
+  lastLng       Float
+  lastSpeed     Float
+  lastIgnition  Boolean
+  odometer      Float    @default(0)
+  lastTimestamp DateTime
+  updatedAt     DateTime @updatedAt
+  @@map("vehicle_states")
+}
+
+model Event {
+  id         String   @id @default(uuid())
+  vehicleId  String
+  vehicle    Vehicle  @relation(fields: [vehicleId], references: [id])
+  type       String
+  payload    Json
+  occurredAt DateTime
+  createdAt  DateTime @default(now())
+  @@index([vehicleId, occurredAt(sort: Desc)])
+  @@map("events")
+}
+
+// Fila de eventos já processados — barreira durável contra duplicatas
+model ProcessedEvent {
+  eventId     String   @id
+  processedAt DateTime @default(now())
+  @@map("processed_events")
+}

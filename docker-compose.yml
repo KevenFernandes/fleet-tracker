@@ -1,0 +1,103 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: tracking
+      POSTGRES_PASSWORD: tracking
+      POSTGRES_DB: tracking
+    ports: ['5433:5432']
+    volumes: [pg_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U tracking']
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--appendonly', 'yes']
+    ports: ['6379:6379']
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    environment:
+      RABBITMQ_DEFAULT_USER: tracking
+      RABBITMQ_DEFAULT_PASS: tracking
+    ports: ['5672:5672', '15672:15672']
+    volumes:
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
+      - rabbit_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 10s
+
+  # Broker MQTT (o que você esqueceu)
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports: ['1883:1883', '9001:9001']
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto_data:/mosquitto/data
+
+  # ─── Migrator Service ──────────────────────────────────────
+  prisma-migrate:
+    build: .
+    command: npx prisma migrate deploy
+    environment:
+      DATABASE_URL: postgresql://tracking:tracking@postgres:5432/tracking?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ─── Aplicação ─────────────────────────────────────────────
+  api:
+    build: .
+    command: npm run start:api
+    environment: &app_env
+      NODE_ENV: production
+      APP_PORT: 3000
+      PARTITIONS: 16
+      RABBITMQ_URL: amqp://tracking:tracking@rabbitmq:5672
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://tracking:tracking@postgres:5432/tracking?schema=public
+      MQTT_URL: mqtt://mosquitto:1883
+    ports: ['3000:3000']
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      prisma-migrate: { condition: service_completed_successfully }
+
+  # 16 workers, um por partição — cada um é um comboio
+  worker-0: &worker
+    build: .
+    command: npm run start:worker
+    environment:
+      <<: *app_env
+      PARTITION: 0
+    depends_on:
+      api: { condition: service_started }
+  worker-1: { <<: *worker, environment: { <<: *app_env, PARTITION: 1 } }
+  worker-2: { <<: *worker, environment: { <<: *app_env, PARTITION: 2 } }
+  worker-3: { <<: *worker, environment: { <<: *app_env, PARTITION: 3 } }
+  worker-4: { <<: *worker, environment: { <<: *app_env, PARTITION: 4 } }
+  worker-5: { <<: *worker, environment: { <<: *app_env, PARTITION: 5 } }
+  worker-6: { <<: *worker, environment: { <<: *app_env, PARTITION: 6 } }
+  worker-7: { <<: *worker, environment: { <<: *app_env, PARTITION: 7 } }
+  worker-8: { <<: *worker, environment: { <<: *app_env, PARTITION: 8 } }
+  worker-9: { <<: *worker, environment: { <<: *app_env, PARTITION: 9 } }
+  worker-10: { <<: *worker, environment: { <<: *app_env, PARTITION: 10 } }
+  worker-11: { <<: *worker, environment: { <<: *app_env, PARTITION: 11 } }
+  worker-12: { <<: *worker, environment: { <<: *app_env, PARTITION: 12 } }
+  worker-13: { <<: *worker, environment: { <<: *app_env, PARTITION: 13 } }
+  worker-14: { <<: *worker, environment: { <<: *app_env, PARTITION: 14 } }
+  worker-15: { <<: *worker, environment: { <<: *app_env, PARTITION: 15 } }
+
+volumes:
+  pg_data:
+  redis_data:
+  rabbit_data:
+  mosquitto_data:
