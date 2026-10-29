@@ -570,3 +570,7 @@ Aqui estão recomendações técnicas para expansão e manutenção do projeto:
 
 3. **Streaming em Tempo Real para o Front-end (WebSockets / SSE):**
    - Conectar o Redis Pub/Sub ao evento de salvamento do `ProcessTelemetryUseCase` para enviar atualizações via WebSockets diretamente para uma interface de mapas (Leaflet / Mapbox / Google Maps).
+
+4. **Estratégia de Retenção e Saúde do Banco de Dados:**
+   - Em sistemas de telemetria IoT, o volume de dados gerado por milhares de dispositivos cresce exponencialmente. Para evitar que o PostgreSQL sofra com saturação de disco e lentidão, planeje uma janela operacional de 30 dias.
+   - Arquivamento e Expurgo Automatizado: Exporte os dados antigos para um armazenamento de longo prazo (como o MinIO / Data Lake) antes de realizar a limpeza periódica, mantendo o banco principal enxuto, performático e focado apenas nos dados quentes do dia a dia.
